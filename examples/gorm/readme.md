@@ -12,7 +12,12 @@ go run github.com/go-saas/saas/examples/gorm
 docker-compose up -d
 go run github.com/go-saas/saas/examples/gorm --driver mysql
 ```
-
+---
+### postgres
+```shell
+docker-compose up -d
+go run github.com/go-saas/saas/examples/gorm --driver pgx
+```
 
 Host side ( use shared database):
 

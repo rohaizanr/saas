@@ -5,24 +5,28 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-saas/saas"
 	sgin "github.com/go-saas/saas/gin"
 	mysql2 "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 
+	"net/http"
+
 	"github.com/go-saas/saas/data"
 	sgorm "github.com/go-saas/saas/gorm"
 	"github.com/go-saas/saas/seed"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"net/http"
 )
 
 const (
-	defaultSqliteSharedDsn = "./example.db"
-	defaultMysqlSharedDsn  = "root:youShouldChangeThis@tcp(127.0.0.1:3406)/example?parseTime=true&loc=Local"
+	defaultSqliteSharedDsn   = "./example.db"
+	defaultMysqlSharedDsn    = "root:youShouldChangeThis@tcp(127.0.0.1:3406)/example?parseTime=true&loc=Local"
+	defaultPostgresSharedDsn = "host=localhost user=pgsql-saas password=pgsql-saas dbname=pgsql-saas port=5435 sslmode=disable TimeZone=UTC"
 )
 
 var (
@@ -32,7 +36,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&driver, "driver", "sqlite3", "sqlite3/mysql")
+	flag.StringVar(&driver, "driver", "sqlite3", "sqlite3/mysql/pgx")
 	flag.StringVar(&sharedDsn, "dsn", "", "shared dsn.")
 }
 
@@ -77,6 +81,49 @@ func main() {
 			}
 			return db.Close()
 		}
+	case "pgx":
+		if len(sharedDsn) == 0 {
+			sharedDsn = defaultPostgresSharedDsn
+		}
+
+		suffix := "%s"
+		modifiedDSN := AddSuffixToDBName(sharedDsn, suffix)
+		connStrGen = saas.NewConnStrGenerator(modifiedDSN)
+
+		ensureDbExist = func(s string) error {
+			dbname, err := ParseDBNameFromPostgresDSN(s)
+			if err != nil {
+				return err
+			}
+
+			noDbDsn, err := RemoveDBNameFromPostgresDSN(s)
+			if err != nil {
+				return err
+			}
+
+			//open without db name
+			db, err := sql.Open(driver, noDbDsn)
+			if err != nil {
+				return err
+			}
+
+			var exists bool
+			err = db.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", dbname).Scan(&exists)
+			if err != nil {
+				return err
+			}
+
+			// If the database doesn't exist, create it
+			if !exists {
+				_, err := db.ExecContext(context.Background(), fmt.Sprintf("CREATE DATABASE \"%s\"", dbname))
+				if err != nil {
+					return err
+				}
+			}
+
+			return db.Close()
+		}
+
 	default:
 		panic(fmt.Errorf("driver %s unsupported", driver))
 	}
@@ -115,7 +162,12 @@ func main() {
 				client, err = gorm.Open(mysql.New(mysql.Config{
 					Conn: db,
 				}))
+			} else if driver == "pgx" {
+				client, err = gorm.Open(postgres.New(postgres.Config{
+					Conn: db,
+				}))
 			}
+
 			return sgorm.NewDbWrap(client), err
 		})
 
