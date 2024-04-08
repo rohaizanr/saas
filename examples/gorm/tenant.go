@@ -11,7 +11,7 @@ import (
 )
 
 type Tenant struct {
-	ID string `gorm:"type:char(36)" json:"id"`
+	ID string `gorm:"type:varchar(36)" json:"id"`
 	//unique name. usually for domain name
 	Name string `gorm:"column:name;index;size:255;"`
 	//localed display name
