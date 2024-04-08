@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"github.com/go-saas/saas"
 
 	"github.com/go-saas/saas/data"
@@ -31,17 +29,10 @@ func (s *Seed) Seed(ctx context.Context, sCtx *seed.Context) error {
 		t3 := Tenant{ID: "3", Name: "Test3"}
 		t3Conn, _ := s.connStrGen.Gen(ctx, saas.NewBasicTenantInfo(t3.ID, t3.Name))
 
-		// Find the position of the unwanted substring
-		index := strings.Index(t3Conn, "%!(EXTRA string=3)")
-		// Remove the unwanted substring if found
-		if index != -1 {
-			t3Conn = strings.Replace(t3Conn, "%!(EXTRA string=3)", "", -1)
-		}
-
 		t3.Conn = []TenantConn{
 			{Key: data.Default, Value: t3Conn}, // use tenant3.db
 		}
-		err := db.Model(&Tenant{}).Clauses(clause.OnConflict{UpdateAll: true}).CreateInBatches([]Tenant{
+		err := db.Model(&Tenant{}).Session(&gorm2.Session{FullSaveAssociations: true}).Clauses(clause.OnConflict{UpdateAll: true}).CreateInBatches([]Tenant{
 			{ID: "1", Name: "Test1"}, // use default shared.db
 			{ID: "2", Name: "Test2"},
 			t3}, 10).Error
